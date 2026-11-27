@@ -70,3 +70,4 @@ ul.list li:first-child { border-top: 0; }
 .save-status.ok { color: var(--green); }
 .save-status.err { color: var(--red); }
 label.field { display: block; font-weight: 600; margin-bottom: 4px; }
+.everyone li > strong { display: block; font-size: 1.05rem; margin-bottom: 6px; }

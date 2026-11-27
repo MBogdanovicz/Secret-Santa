@@ -77,6 +77,17 @@ function infoBlock(d) {
     .join("")}</dl></div>`;
 }
 
+function everyoneBlock(list) {
+  if (!list.length) return "";
+  return `<div class="card stack">
+    <h2>📝 O que cada um gostaria de ganhar</h2>
+    <p class="muted">Ideias de toda a família, para ajudar também em outros presentes.</p>
+    <ul class="list everyone">${list.map((p) => `<li><strong>${esc(p.name)}</strong>
+      ${p.suggestions.trim() ? `<div class="suggestions">${esc(p.suggestions.trim())}</div>`
+                             : `<div class="muted">Ainda não escreveu.</div>`}</li>`).join("")}</ul>
+  </div>`;
+}
+
 async function participantView(token) {
   $app.innerHTML = `<p class="muted center">Carregando…</p>`;
   let data;
@@ -102,7 +113,8 @@ async function participantView(token) {
       <p class="muted">Escreva aqui suas ideias de presente. Quem tirou você vai ler. Fica salvo sozinho.</p>
       <textarea id="mySug" maxlength="2000" placeholder="Exemplo: livro, camisa tamanho M, chocolate…">${esc(data.me.suggestions)}</textarea>
       <div id="saveStatus" class="save-status" role="status" aria-live="polite"></div>
-    </div>`;
+    </div>
+    ${everyoneBlock(data.everyone || [])}`;
 
   const matchBox = document.getElementById("matchBox");
   function renderMatch(show) {

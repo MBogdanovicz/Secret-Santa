@@ -181,8 +181,16 @@ async function handleParticipant(request, env, token, sub) {
       const m = ev.participants.find((p) => p.id === ev.assignments[me.id]);
       if (m) match = { name: m.name, suggestions: (await env.DB.get("sug:" + m.id)) || "" };
     }
+    // Sugestões de todos os outros participantes (a lista inclui todo mundo, então não revela o sorteio).
+    const everyone = await Promise.all(
+      ev.participants
+        .filter((p) => p.id !== me.id)
+        .map(async (p) => ({ name: p.name, suggestions: (await env.DB.get("sug:" + p.id)) || "" }))
+    );
+    everyone.sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
     return json({
       ...eventInfo(ev),
+      everyone,
       me: { name: me.name, suggestions: (await env.DB.get("sug:" + me.id)) || "" },
       drawn: !!ev.assignments,
       match,
