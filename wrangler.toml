@@ -10,4 +10,4 @@ run_worker_first = ["/api/*"]
 # Crie com: npx wrangler kv namespace create DB  (e cole o id abaixo)
 [[kv_namespaces]]
 binding = "DB"
-id = "COLE_AQUI_O_ID_DO_KV"
+id = "e8012ade20054fab95f12903dd53355c"
