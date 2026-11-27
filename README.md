@@ -32,3 +32,9 @@ Depois abra `https://secret-santa.<sua-conta>.workers.dev/#admin` e entre com a 
 echo 'ADMIN_PASSWORD=teste123' > .dev.vars
 npm run dev   # http://localhost:8787/#admin
 ```
+
+## Deploy automático
+
+O Worker está conectado a este repositório pela Cloudflare (Workers Builds): cada push no `main` publica o site.
+Se aparecer o aviso "disconnected from your Git account", libere o repositório no app
+"Cloudflare Workers and Pages" em https://github.com/settings/installations.
