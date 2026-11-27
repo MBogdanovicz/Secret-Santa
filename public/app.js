@@ -65,6 +65,20 @@ function homeView() {
 }
 
 // ---------- Participante ----------
+function daysUntil(isoDate) {
+  if (!isoDate) return null;
+  const [y, m, d] = isoDate.split("-").map(Number);
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  return Math.round((new Date(y, m - 1, d) - today) / 86400000);
+}
+
+function countdownHtml(isoDate) {
+  const n = daysUntil(isoDate);
+  if (n === null || n < 0) return "";
+  const text = n === 0 ? "É hoje! 🎉" : n === 1 ? "Falta 1 dia! 🎄" : `Faltam ${n} dias 🎄`;
+  return `<div class="countdown">${text}</div>`;
+}
+
 function infoBlock(d) {
   const rows = [
     ["📅", "Quando", d.when],
@@ -105,7 +119,8 @@ async function participantView(token) {
 
   $app.innerHTML = `
     <div class="header"><div class="emoji">🎄</div><h1>${esc(data.title)}</h1>
-      <p>Olá, <strong>${esc(data.me.name)}</strong>!</p></div>
+      <p>Olá, <strong>${esc(data.me.name)}</strong>!</p>${countdownHtml(data.date)}</div>
+    <div id="askedBox"></div>
     <div id="matchBox"></div>
     ${infoBlock(data)}
     <div class="card stack">
@@ -145,8 +160,93 @@ async function participantView(token) {
         <h2>💡 O que ${esc(data.match.name)} gostaria de ganhar</h2>
         ${sug ? `<div class="suggestions">${esc(sug)}</div>`
               : `<p class="muted">${esc(data.match.name)} ainda não escreveu nada. Abra este link de novo outro dia para ver.</p>`}
+      </div>
+      <div class="card stack center">
+        ${data.bought
+          ? `<p class="bought-done">✅ Presente comprado!</p>
+             <button class="secondary block" id="boughtBtn">Ainda não comprei</button>`
+          : `<h2>🛍️ Já comprou o presente?</h2>
+             <button class="block" id="boughtBtn">Sim, já comprei o presente</button>`}
+      </div>
+      <div class="card stack">
+        <h2>❓ Pergunte algo para ${esc(data.match.name)}</h2>
+        <p class="muted">${esc(data.match.name)} vai responder <strong>sem saber que foi você</strong> que perguntou. Exemplo: “Qual o seu tamanho de sapato?”</p>
+        ${data.match.questions.map((q) => `<div class="qa">
+            <p class="q">${esc(q.text)}</p>
+            ${q.answer ? `<p class="a">💬 ${esc(q.answer)}</p>` : `<p class="muted small">⏳ Esperando resposta…</p>`}
+          </div>`).join("")}
+        ${data.match.questions.length < 10 ? `
+          <textarea id="newQ" maxlength="300" style="min-height:90px" placeholder="Escreva sua pergunta…"></textarea>
+          <button class="block" id="sendQ">Enviar pergunta</button>` : ""}
       </div>`;
+    document.getElementById("boughtBtn").onclick = async (e) => {
+      e.target.disabled = true;
+      try {
+        await api(`p/${encodeURIComponent(token)}/bought`, { method: "PUT", body: { bought: !data.bought } });
+        data.bought = !data.bought;
+        if (data.bought) toast("Que ótimo! 🎁");
+      } catch (err) { toast(err.message); }
+      renderMatch(true);
+    };
+    const sendQ = document.getElementById("sendQ");
+    if (sendQ) sendQ.onclick = async () => {
+      const text = document.getElementById("newQ").value.trim();
+      if (!text) return toast("Escreva a pergunta primeiro.");
+      sendQ.disabled = true;
+      try {
+        await api(`p/${encodeURIComponent(token)}/questions`, { method: "POST", body: { text } });
+        data.match.questions.push({ id: "", text, answer: "" });
+        toast("Pergunta enviada! 🤫");
+      } catch (err) { toast(err.message); }
+      renderMatch(true);
+    };
   }
+
+  // Perguntas que o meu amigo secreto me fez.
+  const askedBox = document.getElementById("askedBox");
+  function renderAsked() {
+    const qs = data.questionsToMe || [];
+    if (!qs.length) { askedBox.innerHTML = ""; return; }
+    askedBox.innerHTML = `<div class="card stack asked">
+      <h2>🤫 Seu amigo secreto quer saber</h2>
+      <p class="muted">Responda à vontade: quem perguntou continua em segredo.</p>
+      ${qs.map((q, i) => `<div class="qa">
+          <p class="q">${esc(q.text)}</p>
+          ${q.answer
+            ? `<p class="a">💬 ${esc(q.answer)}</p><button class="secondary" data-edit="${i}">Mudar resposta</button>`
+            : `<textarea data-ans="${i}" maxlength="1000" style="min-height:90px" placeholder="Sua resposta…"></textarea>
+               <button class="block" data-send="${i}">Enviar resposta</button>`}
+        </div>`).join("")}
+    </div>`;
+    askedBox.querySelectorAll("[data-edit]").forEach((b) => {
+      b.onclick = () => {
+        const q = qs[b.dataset.edit];
+        const wrap = b.parentElement;
+        wrap.innerHTML = `<p class="q">${esc(q.text)}</p>
+          <textarea data-ans="${b.dataset.edit}" maxlength="1000" style="min-height:90px">${esc(q.answer)}</textarea>
+          <button class="block" data-send="${b.dataset.edit}">Enviar resposta</button>`;
+        bindSend(wrap);
+      };
+    });
+    bindSend(askedBox);
+    function bindSend(root) {
+      root.querySelectorAll("[data-send]").forEach((b) => {
+        b.onclick = async () => {
+          const i = b.dataset.send;
+          const text = root.querySelector(`[data-ans="${i}"]`).value.trim();
+          if (!text) return toast("Escreva a resposta primeiro.");
+          b.disabled = true;
+          try {
+            await api(`p/${encodeURIComponent(token)}/answers/${encodeURIComponent(qs[i].id)}`, { method: "PUT", body: { text } });
+            qs[i].answer = text;
+            toast("Resposta enviada! ✅");
+          } catch (err) { toast(err.message); b.disabled = false; return; }
+          renderAsked();
+        };
+      });
+    }
+  }
+  renderAsked();
   renderMatch(storage(revealedKey) === "1");
 
   // Salvamento automático das sugestões.
@@ -227,13 +327,19 @@ async function adminView() {
     const msg = `Oi, ${p.name}! 🎁\nEste é o seu link do *${s.title}*. Toque nele para descobrir quem você tirou e escrever o que gostaria de ganhar.\n${details ? details + "\n" : ""}\nÉ só seu, não mostre para ninguém! 🤫\n${link}`;
     const reminder = !p.seen
       ? `Oi, ${p.name}! 😊 Lembrete do *${s.title}*: você ainda não abriu o seu link. Toque aqui para descobrir quem você tirou:\n${link}`
+      : p.pendingQuestion
+      ? `Oi, ${p.name}! 🤫 Seu amigo secreto do *${s.title}* te fez uma pergunta! Toque aqui para responder:\n${link}`
       : !p.hasSuggestions
       ? `Oi, ${p.name}! 😊 Lembrete do *${s.title}*: que tal escrever o que você gostaria de ganhar? Ajuda muito quem tirou você! Toque aqui:\n${link}`
+      : !p.bought
+      ? `Oi, ${p.name}! 🛍️ Lembrete do *${s.title}*: já comprou o presente do seu amigo secreto? Quando comprar, marque no seu link:\n${link}`
       : "";
     return `<li>
       <div class="person"><span class="name">${esc(p.name)}</span>
         <span>${p.seen ? `<span class="badge ok">abriu o link</span>` : `<span class="badge">não abriu</span>`}
-        ${p.hasSuggestions ? `<span class="badge ok">deu sugestões</span>` : ""}</span></div>
+        ${p.hasSuggestions ? `<span class="badge ok">deu sugestões</span>` : ""}
+        ${s.drawn && p.bought ? `<span class="badge ok">comprou presente</span>` : ""}
+        ${p.pendingQuestion ? `<span class="badge warn">pergunta sem resposta</span>` : ""}</span></div>
       ${s.drawn
         ? (p.partnerId && byId[p.partnerId] ? `<div class="muted small">❤️ casal com ${esc(byId[p.partnerId].name)}</div>` : "")
         : partnerSelect(p)}
@@ -265,7 +371,7 @@ async function adminView() {
     <div class="card stack">
       ${s.drawn
         ? `<h2>✅ Sorteio realizado</h2>
-           <p class="small muted">Feito em ${new Date(s.drawnAt).toLocaleString("pt-BR")}. ${seenCount} de ${n} já abriram o link.
+           <p class="small muted">Feito em ${new Date(s.drawnAt).toLocaleString("pt-BR")}. ${seenCount} de ${n} já abriram o link e ${s.participants.filter((p) => p.bought).length} já compraram o presente.
            O resultado fica em segredo, nem o organizador consegue ver quem tirou quem.</p>
            <button class="secondary block" id="redraw">Refazer sorteio</button>
            <button class="danger block" id="undo">Desfazer sorteio (para editar participantes)</button>`
@@ -279,11 +385,18 @@ async function adminView() {
       <h2>Informações do evento</h2>
       <p class="small muted">Aparecem na página de cada participante e na mensagem do WhatsApp. Deixe em branco o que não quiser mostrar.</p>
       <div><label class="field" for="title">Nome do evento</label><input id="title" value="${esc(s.title)}" maxlength="80" required></div>
-      <div><label class="field" for="when">📅 Quando</label><input id="when" value="${esc(s.when)}" maxlength="80" placeholder="Ex.: 24 de dezembro, às 20h"></div>
+      <div><label class="field" for="date">📆 Data (para a contagem regressiva)</label><input id="date" type="date" value="${esc(s.date)}"></div>
+      <div><label class="field" for="when">📅 Quando (texto que aparece para todos)</label><input id="when" value="${esc(s.when)}" maxlength="80" placeholder="Ex.: 24 de dezembro, às 20h"></div>
       <div><label class="field" for="place">📍 Onde</label><input id="place" value="${esc(s.place)}" maxlength="120" placeholder="Ex.: Casa da vó Maria"></div>
       <div><label class="field" for="budget">💰 Valor do presente</label><input id="budget" value="${esc(s.budget)}" maxlength="40" placeholder="Ex.: até R$ 100"></div>
       <button class="block">Salvar informações</button>
-    </form>`;
+    </form>
+
+    <div class="card stack">
+      <h2>Começar do zero</h2>
+      <p class="small muted">Apaga participantes, sorteio, sugestões e perguntas. Use depois de um teste ou no próximo ano.</p>
+      <button class="danger block" id="resetAll">🗑️ Apagar tudo</button>
+    </div>`;
 
   const run = async (fn, okMsg) => {
     try { await fn(); if (okMsg) toast(okMsg); } catch (e) { toast(e.message); }
@@ -304,7 +417,12 @@ async function adminView() {
   document.getElementById("infoForm").onsubmit = (e) => {
     e.preventDefault();
     const v = (id) => document.getElementById(id).value;
-    run(() => api("admin/info", { method: "PUT", body: { title: v("title"), when: v("when"), place: v("place"), budget: v("budget") }, admin: true }), "Informações salvas!");
+    run(() => api("admin/info", { method: "PUT", body: { title: v("title"), when: v("when"), place: v("place"), budget: v("budget"), date: v("date") }, admin: true }), "Informações salvas!");
+  };
+  document.getElementById("resetAll").onclick = () => {
+    if (!confirm("Apagar TUDO e começar do zero? Participantes, sorteio, sugestões e perguntas serão apagados, e os links antigos deixam de funcionar.")) return;
+    if (prompt("Para confirmar, digite APAGAR") !== "APAGAR") return toast("Nada foi apagado.");
+    run(() => api("admin/all", { method: "DELETE", admin: true }), "Tudo apagado. Pode começar de novo!");
   };
   $app.querySelectorAll("[data-del]").forEach((b) => {
     b.onclick = () => confirm("Remover este participante?") &&

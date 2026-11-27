@@ -71,3 +71,11 @@ ul.list li:first-child { border-top: 0; }
 .save-status.err { color: var(--red); }
 label.field { display: block; font-weight: 600; margin-bottom: 4px; }
 .everyone li > strong { display: block; font-size: 1.05rem; margin-bottom: 6px; }
+.countdown { display: inline-block; margin-top: 4px; padding: 6px 16px; border-radius: 999px; background: var(--red); color: #fff; font-weight: 700; font-size: 1.05rem; }
+.qa { border-top: 1px solid var(--border); padding-top: 12px; }
+.qa > * + * { margin-top: 8px; }
+.qa .q { font-weight: 700; margin: 0; }
+.qa .a { margin: 0; white-space: pre-wrap; }
+.asked { border: 2px solid var(--red); }
+.bought-done { font-size: 1.3rem; font-weight: 800; color: var(--green); margin: 0; }
+.badge.warn { color: var(--red); border-color: var(--red); }
