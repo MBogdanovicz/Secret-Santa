@@ -35,6 +35,8 @@ async function getEvent(env) {
   );
 }
 
+const eventInfo = (ev) => ({ title: ev.title, when: ev.when || "", place: ev.place || "", budget: ev.budget || "" });
+
 const saveEvent = (env, ev) => env.DB.put("event", JSON.stringify(ev));
 
 // Sorteio: permutação aleatória em que ninguém tira a si mesmo nem o próprio par (casal).
@@ -88,13 +90,18 @@ async function handleAdmin(request, env, parts) {
       }))
     );
     // As duplas sorteadas NÃO são enviadas ao admin (ele também participa).
-    return json({ title: ev.title, drawn: !!ev.assignments, drawnAt: ev.drawnAt, participants });
+    return json({ ...eventInfo(ev), drawn: !!ev.assignments, drawnAt: ev.drawnAt, participants });
   }
 
-  if (resource === "title" && method === "PUT") {
-    const { title } = await readBody(request);
-    if (!title || !String(title).trim()) return err("Informe um título.");
-    ev.title = String(title).trim().slice(0, 80);
+  if (resource === "info" && method === "PUT") {
+    const body = await readBody(request);
+    const clean = (v, max) => String(v || "").trim().slice(0, max);
+    const title = clean(body.title, 80);
+    if (!title) return err("Informe o nome do evento.");
+    ev.title = title;
+    ev.when = clean(body.when, 80);
+    ev.place = clean(body.place, 120);
+    ev.budget = clean(body.budget, 40);
     await saveEvent(env, ev);
     return json({ ok: true });
   }
@@ -175,7 +182,7 @@ async function handleParticipant(request, env, token, sub) {
       if (m) match = { name: m.name, suggestions: (await env.DB.get("sug:" + m.id)) || "" };
     }
     return json({
-      title: ev.title,
+      ...eventInfo(ev),
       me: { name: me.name, suggestions: (await env.DB.get("sug:" + me.id)) || "" },
       drawn: !!ev.assignments,
       match,
@@ -185,10 +192,38 @@ async function handleParticipant(request, env, token, sub) {
   return err("Rota não encontrada.", 404);
 }
 
+// Prévia do link no WhatsApp: injeta título e imagem (URL absoluta) no index.html.
+async function serveIndex(request, env) {
+  const res = await env.ASSETS.fetch(request);
+  if (!(res.headers.get("content-type") || "").includes("text/html")) return res;
+  const origin = new URL(request.url).origin;
+  const ev = await getEvent(env);
+  const title = ev.title;
+  const desc = "Toque no link para descobrir quem você tirou e deixar suas sugestões de presente. 🎁";
+  const set = (attr) => ({ element: (el) => el.setAttribute("content", attr) });
+  return new HTMLRewriter()
+    .on("title", { element: (el) => el.setInnerContent(title) })
+    .on('meta[property="og:title"]', set(title))
+    .on('meta[property="og:description"]', set(desc))
+    .on('meta[name="description"]', set(desc))
+    .on('meta[property="og:image"]', set(origin + "/og.jpg"))
+    .on('meta[property="og:url"]', set(origin + "/"))
+    .transform(res);
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    if (!url.pathname.startsWith("/api/")) return env.ASSETS.fetch(request);
+    if (!url.pathname.startsWith("/api/")) {
+      if (request.method === "GET" && (url.pathname === "/" || url.pathname === "/index.html")) {
+        try {
+          return await serveIndex(request, env);
+        } catch {
+          return env.ASSETS.fetch(request);
+        }
+      }
+      return env.ASSETS.fetch(request);
+    }
     const parts = url.pathname.slice(5).split("/").filter(Boolean).map(decodeURIComponent);
     try {
       if (parts[0] === "admin") return await handleAdmin(request, env, parts.slice(1));

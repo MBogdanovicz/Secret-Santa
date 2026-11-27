@@ -65,6 +65,18 @@ function homeView() {
 }
 
 // ---------- Participante ----------
+function infoBlock(d) {
+  const rows = [
+    ["📅", "Quando", d.when],
+    ["📍", "Onde", d.place],
+    ["💰", "Valor do presente", d.budget],
+  ].filter((r) => r[2]);
+  if (!rows.length) return "";
+  return `<div class="card"><dl class="info">${rows
+    .map(([icon, label, value]) => `<div><dt>${icon}</dt><dd><strong>${label}</strong>${esc(value)}</dd></div>`)
+    .join("")}</dl></div>`;
+}
+
 async function participantView(token) {
   $app.innerHTML = `<p class="muted center">Carregando…</p>`;
   let data;
@@ -74,73 +86,86 @@ async function participantView(token) {
     if (e.status === 404) storage("myToken", null);
     $app.innerHTML = `
       <div class="header"><div class="emoji">😕</div><h1>Link inválido</h1></div>
-      <div class="card center"><p>${esc(e.message)}</p><p class="muted small">Peça um novo link ao organizador.</p></div>`;
+      <div class="card center"><p>${esc(e.message)}</p><p class="muted">Peça um novo link ao organizador.</p></div>`;
     return;
   }
   document.title = data.title;
   const revealedKey = "revealed:" + token;
-  const revealed = storage(revealedKey) === "1";
 
   $app.innerHTML = `
     <div class="header"><div class="emoji">🎄</div><h1>${esc(data.title)}</h1>
-      <p class="muted">Olá, <strong>${esc(data.me.name)}</strong>!</p></div>
+      <p>Olá, <strong>${esc(data.me.name)}</strong>!</p></div>
     <div id="matchBox"></div>
+    ${infoBlock(data)}
     <div class="card stack">
-      <h2>🎁 Minhas sugestões de presente</h2>
-      <p class="muted small">Quem tirou você vai ver o que você escrever aqui. Dê dicas de tamanho, cores, gostos…</p>
-      <textarea id="mySug" maxlength="2000" placeholder="Ex.: livro de suspense, camiseta M, chocolate amargo…">${esc(data.me.suggestions)}</textarea>
-      <button id="saveSug" class="block">Salvar sugestões</button>
+      <h2>🎁 O que eu gostaria de ganhar</h2>
+      <p class="muted">Escreva aqui suas ideias de presente. Quem tirou você vai ler. Fica salvo sozinho.</p>
+      <textarea id="mySug" maxlength="2000" placeholder="Exemplo: livro, camisa tamanho M, chocolate…">${esc(data.me.suggestions)}</textarea>
+      <div id="saveStatus" class="save-status" role="status" aria-live="polite"></div>
     </div>`;
 
   const matchBox = document.getElementById("matchBox");
   function renderMatch(show) {
     if (!data.drawn || !data.match) {
       matchBox.innerHTML = `<div class="card center"><div style="font-size:3rem">⏳</div>
-        <p>O sorteio ainda não foi feito.<br><span class="muted small">Volte neste mesmo link mais tarde. Enquanto isso, já pode deixar suas sugestões abaixo.</span></p></div>`;
+        <p><strong>O sorteio ainda não foi feito.</strong></p>
+        <p class="muted">Abra este mesmo link de novo mais tarde. Enquanto isso, já pode escrever o que gostaria de ganhar aqui embaixo.</p></div>`;
       return;
     }
     if (!show) {
-      matchBox.innerHTML = `<div class="card reveal" id="revealBtn" role="button" tabindex="0">
-        <div class="gift">🎁</div><h2 style="margin-top:12px">Toque para revelar seu amigo secreto</h2>
-        <p class="muted small">Confira se ninguém está olhando! 🤫</p></div>`;
+      matchBox.innerHTML = `<button class="card reveal block" id="revealBtn" style="color:inherit;background:var(--card)">
+        <div><div class="gift">🎁</div><h2 style="margin:12px 0 4px">Toque aqui para ver quem você tirou</h2>
+        <p class="muted" style="margin:0">Confira se ninguém está olhando! 🤫</p></div></button>`;
       const btn = document.getElementById("revealBtn");
-      const go = () => {
+      btn.onclick = () => {
         btn.classList.add("shake");
         setTimeout(() => { storage(revealedKey, "1"); renderMatch(true); }, 650);
       };
-      btn.addEventListener("click", go);
-      btn.addEventListener("keydown", (e) => (e.key === "Enter" || e.key === " ") && go());
       return;
     }
     const sug = data.match.suggestions.trim();
     matchBox.innerHTML = `<div class="card center">
         <p class="muted" style="margin:0">Você tirou</p>
         <div class="match-name">${esc(data.match.name)}</div>
-        <p class="muted small" style="margin:0">Guarde segredo! 🤐</p>
+        <p class="muted" style="margin:0">Guarde segredo! 🤐</p>
       </div>
       <div class="card stack">
-        <h2>💡 Sugestões de ${esc(data.match.name)}</h2>
-        ${sug ? `<div class="suggestions">${esc(sug)}</div>` : `<p class="muted">${esc(data.match.name)} ainda não escreveu sugestões. Volte mais tarde!</p>`}
-        <div class="actions"><button class="secondary" id="refresh">Atualizar</button>
-        <button class="secondary" id="hide">Esconder nome</button></div>
+        <h2>💡 O que ${esc(data.match.name)} gostaria de ganhar</h2>
+        ${sug ? `<div class="suggestions">${esc(sug)}</div>`
+              : `<p class="muted">${esc(data.match.name)} ainda não escreveu nada. Abra este link de novo outro dia para ver.</p>`}
       </div>`;
-    document.getElementById("refresh").onclick = () => participantView(token);
-    document.getElementById("hide").onclick = () => { storage(revealedKey, null); renderMatch(false); };
   }
-  renderMatch(revealed);
+  renderMatch(storage(revealedKey) === "1");
 
-  const saveBtn = document.getElementById("saveSug");
-  saveBtn.onclick = async () => {
-    saveBtn.disabled = true;
+  // Salvamento automático das sugestões.
+  const ta = document.getElementById("mySug");
+  const status = document.getElementById("saveStatus");
+  let lastSaved = data.me.suggestions;
+  let timer;
+  const setStatus = (text, cls = "") => { status.textContent = text; status.className = "save-status " + cls; };
+  async function save(keepalive = false) {
+    clearTimeout(timer);
+    const text = ta.value;
+    if (text === lastSaved) return;
+    setStatus("Salvando…");
     try {
-      await api(`p/${encodeURIComponent(token)}/suggestions`, { method: "PUT", body: { text: document.getElementById("mySug").value } });
-      toast("Sugestões salvas! ✅");
-    } catch (e) {
-      toast(e.message);
-    } finally {
-      saveBtn.disabled = false;
+      if (keepalive) {
+        fetch(`/api/p/${encodeURIComponent(token)}/suggestions`, {
+          method: "PUT", keepalive: true, headers: { "content-type": "application/json" }, body: JSON.stringify({ text }),
+        });
+        lastSaved = text;
+        return;
+      }
+      await api(`p/${encodeURIComponent(token)}/suggestions`, { method: "PUT", body: { text } });
+      lastSaved = text;
+      setStatus(ta.value === text ? "✅ Salvo" : "", "ok");
+    } catch {
+      setStatus("⚠️ Não foi possível salvar. Confira a internet e tente de novo.", "err");
     }
-  };
+  }
+  ta.addEventListener("input", () => { setStatus(""); clearTimeout(timer); timer = setTimeout(save, 1200); });
+  ta.addEventListener("blur", () => save());
+  document.addEventListener("visibilitychange", () => document.visibilityState === "hidden" && save(true), { once: false });
 }
 
 // ---------- Admin ----------
@@ -182,9 +207,17 @@ async function adminView() {
           ${s.participants.filter((o) => o.id !== p.id).map((o) =>
             `<option value="${esc(o.id)}" ${p.partnerId === o.id ? "selected" : ""}>${esc(o.name)}</option>`).join("")}
         </select></label>`;
+  const details = [s.when && `📅 ${s.when}`, s.place && `📍 ${s.place}`, s.budget && `💰 Valor do presente: ${s.budget}`]
+    .filter(Boolean).join("\n");
+  const wa = (text) => "https://wa.me/?text=" + encodeURIComponent(text);
   const item = (p) => {
     const link = participantLink(p.token);
-    const msg = `Oi, ${p.name}! 🎁 Este é o seu link do ${s.title}. Abra para descobrir quem você tirou e deixar suas sugestões de presente (não compartilhe com ninguém!):\n${link}`;
+    const msg = `Oi, ${p.name}! 🎁\nEste é o seu link do *${s.title}*. Toque nele para descobrir quem você tirou e escrever o que gostaria de ganhar.\n${details ? details + "\n" : ""}\nÉ só seu, não mostre para ninguém! 🤫\n${link}`;
+    const reminder = !p.seen
+      ? `Oi, ${p.name}! 😊 Lembrete do *${s.title}*: você ainda não abriu o seu link. Toque aqui para descobrir quem você tirou:\n${link}`
+      : !p.hasSuggestions
+      ? `Oi, ${p.name}! 😊 Lembrete do *${s.title}*: que tal escrever o que você gostaria de ganhar? Ajuda muito quem tirou você! Toque aqui:\n${link}`
+      : "";
     return `<li>
       <div class="person"><span class="name">${esc(p.name)}</span>
         <span>${p.seen ? `<span class="badge ok">abriu o link</span>` : `<span class="badge">não abriu</span>`}
@@ -194,8 +227,9 @@ async function adminView() {
         : partnerSelect(p)}
       <div class="actions">
         ${s.drawn
-          ? `<a class="btn whatsapp" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(msg)}">Enviar no WhatsApp</a>
-             <button class="secondary" data-copy="${esc(msg)}">Copiar mensagem</button>`
+          ? `<a class="btn whatsapp" target="_blank" rel="noopener" href="${wa(msg)}">Enviar no WhatsApp</a>
+             <button class="secondary" data-copy="${esc(msg)}">Copiar mensagem</button>
+             ${reminder ? `<a class="btn secondary" target="_blank" rel="noopener" href="${wa(reminder)}" style="border:1px solid var(--border);background:transparent;color:var(--text)">🔔 Mandar lembrete</a>` : ""}`
           : `<button class="secondary" data-copy="${esc(link)}">Copiar link</button>
              <button class="danger" data-del="${esc(p.id)}">Remover</button>`}
       </div></li>`;
@@ -229,10 +263,15 @@ async function adminView() {
            ${n < 3 ? `<p class="small muted center">Mínimo de 3 participantes.</p>` : ""}`}
     </div>
 
-    <div class="card stack">
-      <h2>Nome do evento</h2>
-      <form class="row" id="titleForm"><input id="title" value="${esc(s.title)}" maxlength="80"><button class="secondary">Salvar</button></form>
-    </div>`;
+    <form class="card stack" id="infoForm">
+      <h2>Informações do evento</h2>
+      <p class="small muted">Aparecem na página de cada participante e na mensagem do WhatsApp. Deixe em branco o que não quiser mostrar.</p>
+      <div><label class="field" for="title">Nome do evento</label><input id="title" value="${esc(s.title)}" maxlength="80" required></div>
+      <div><label class="field" for="when">📅 Quando</label><input id="when" value="${esc(s.when)}" maxlength="80" placeholder="Ex.: 24 de dezembro, às 20h"></div>
+      <div><label class="field" for="place">📍 Onde</label><input id="place" value="${esc(s.place)}" maxlength="120" placeholder="Ex.: Casa da vó Maria"></div>
+      <div><label class="field" for="budget">💰 Valor do presente</label><input id="budget" value="${esc(s.budget)}" maxlength="40" placeholder="Ex.: até R$ 100"></div>
+      <button class="block">Salvar informações</button>
+    </form>`;
 
   const run = async (fn, okMsg) => {
     try { await fn(); if (okMsg) toast(okMsg); } catch (e) { toast(e.message); }
@@ -250,9 +289,10 @@ async function adminView() {
       );
     };
   }
-  document.getElementById("titleForm").onsubmit = (e) => {
+  document.getElementById("infoForm").onsubmit = (e) => {
     e.preventDefault();
-    run(() => api("admin/title", { method: "PUT", body: { title: document.getElementById("title").value }, admin: true }), "Nome salvo!");
+    const v = (id) => document.getElementById(id).value;
+    run(() => api("admin/info", { method: "PUT", body: { title: v("title"), when: v("when"), place: v("place"), budget: v("budget") }, admin: true }), "Informações salvas!");
   };
   $app.querySelectorAll("[data-del]").forEach((b) => {
     b.onclick = () => confirm("Remover este participante?") &&
