@@ -273,7 +273,11 @@ async function handleParticipant(request, env, token, sub, subId) {
     const everyone = await Promise.all(
       ev.participants
         .filter((p) => p.id !== me.id)
-        .map(async (p) => ({ name: p.name, suggestions: (await env.DB.get("sug:" + p.id)) || "" }))
+        .map(async (p) => ({
+          name: p.name,
+          suggestions: (await env.DB.get("sug:" + p.id)) || "",
+          bought: !!(ev.assignments && (await env.DB.get("bought:" + p.id))),
+        }))
     );
     everyone.sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
     return json({

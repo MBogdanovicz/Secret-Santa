@@ -79,3 +79,6 @@ label.field { display: block; font-weight: 600; margin-bottom: 4px; }
 .asked { border: 2px solid var(--red); }
 .bought-done { font-size: 1.3rem; font-weight: 800; color: var(--green); margin: 0; }
 .badge.warn { color: var(--red); border-color: var(--red); }
+.bought-summary { font-weight: 700; margin: 0; }
+.bought-tag { font-weight: 600; color: var(--muted); margin-bottom: 6px; }
+.bought-tag.ok { color: var(--green); }

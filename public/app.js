@@ -91,12 +91,17 @@ function infoBlock(d) {
     .join("")}</dl></div>`;
 }
 
-function everyoneBlock(list) {
+function everyoneBlock(list, data) {
   if (!list.length) return "";
+  const total = list.length + 1;
+  const boughtCount = list.filter((p) => p.bought).length + (data.bought ? 1 : 0);
   return `<div class="card stack">
     <h2>📝 O que cada um gostaria de ganhar</h2>
     <p class="muted">Ideias de toda a família, para ajudar também em outros presentes.</p>
+    ${data.drawn ? `<p class="bought-summary">🛍️ ${boughtCount} de ${total} já compraram o presente</p>` : ""}
     <ul class="list everyone">${list.map((p) => `<li><strong>${esc(p.name)}</strong>
+      ${data.drawn ? (p.bought ? `<div class="bought-tag ok">✅ Já comprou o presente</div>`
+                               : `<div class="bought-tag">⏳ Ainda não comprou o presente</div>`) : ""}
       ${p.suggestions.trim() ? `<div class="suggestions">${esc(p.suggestions.trim())}</div>`
                              : `<div class="muted">Ainda não escreveu.</div>`}</li>`).join("")}</ul>
   </div>`;
@@ -129,7 +134,7 @@ async function participantView(token) {
       <textarea id="mySug" maxlength="2000" placeholder="Exemplo: livro, camisa tamanho M, chocolate…">${esc(data.me.suggestions)}</textarea>
       <div id="saveStatus" class="save-status" role="status" aria-live="polite"></div>
     </div>
-    ${everyoneBlock(data.everyone || [])}`;
+    ${everyoneBlock(data.everyone || [], data)}`;
 
   const matchBox = document.getElementById("matchBox");
   function renderMatch(show) {
