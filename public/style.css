@@ -58,3 +58,5 @@ ul.list li:first-child { border-top: 0; }
   background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 999px; opacity: 0; transition: .25s; pointer-events: none; max-width: calc(100% - 32px); }
 #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 .error { color: var(--red); }
+.partner { display: flex; align-items: center; gap: 8px; margin-top: 8px; color: var(--muted); }
+.partner select { font: inherit; flex: 1; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg); color: var(--text); min-height: 40px; }

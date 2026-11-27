@@ -3,7 +3,7 @@
 Site simples para organizar o amigo secreto:
 
 - **Organizador** (`/#admin`, protegido por senha): cadastra participantes, faz o sorteio
-  (ninguém tira a si mesmo) e envia o link individual de cada um pelo WhatsApp.
+  (ninguém tira a si mesmo nem o próprio par; os casais são marcados no painel) e envia o link individual de cada um pelo WhatsApp.
   O organizador **não** vê quem tirou quem, então pode participar também.
 - **Participante** (`/#p=<código>`): toca para revelar o amigo, vê as sugestões dele e
   escreve as próprias sugestões de presente.

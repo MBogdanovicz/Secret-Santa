@@ -174,6 +174,14 @@ async function adminView() {
   const n = s.participants.length;
   const seenCount = s.participants.filter((p) => p.seen).length;
 
+  const byId = Object.fromEntries(s.participants.map((p) => [p.id, p]));
+  const partnerSelect = (p) => `
+      <label class="partner small">❤️ Casal com
+        <select data-partner="${esc(p.id)}">
+          <option value="">ninguém</option>
+          ${s.participants.filter((o) => o.id !== p.id).map((o) =>
+            `<option value="${esc(o.id)}" ${p.partnerId === o.id ? "selected" : ""}>${esc(o.name)}</option>`).join("")}
+        </select></label>`;
   const item = (p) => {
     const link = participantLink(p.token);
     const msg = `Oi, ${p.name}! 🎁 Este é o seu link do ${s.title}. Abra para descobrir quem você tirou e deixar suas sugestões de presente (não compartilhe com ninguém!):\n${link}`;
@@ -181,6 +189,9 @@ async function adminView() {
       <div class="person"><span class="name">${esc(p.name)}</span>
         <span>${p.seen ? `<span class="badge ok">abriu o link</span>` : `<span class="badge">não abriu</span>`}
         ${p.hasSuggestions ? `<span class="badge ok">deu sugestões</span>` : ""}</span></div>
+      ${s.drawn
+        ? (p.partnerId && byId[p.partnerId] ? `<div class="muted small">❤️ casal com ${esc(byId[p.partnerId].name)}</div>` : "")
+        : partnerSelect(p)}
       <div class="actions">
         ${s.drawn
           ? `<a class="btn whatsapp" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(msg)}">Enviar no WhatsApp</a>
@@ -213,7 +224,7 @@ async function adminView() {
            <button class="secondary block" id="redraw">Refazer sorteio</button>
            <button class="danger block" id="undo">Desfazer sorteio (para editar participantes)</button>`
         : `<h2>Sorteio</h2>
-           <p class="small muted">Cadastre todos e depois sorteie. Ninguém tira a si mesmo. Depois do sorteio aparecem os botões para enviar cada link pelo WhatsApp.</p>
+           <p class="small muted">Cadastre todos e depois sorteie. Ninguém tira a si mesmo nem o próprio par (marque os casais em “Casal com”). Depois do sorteio aparecem os botões para enviar cada link pelo WhatsApp.</p>
            <button class="block" id="draw" ${n < 3 ? "disabled" : ""}>🎲 Sortear agora</button>
            ${n < 3 ? `<p class="small muted center">Mínimo de 3 participantes.</p>` : ""}`}
     </div>
@@ -252,6 +263,11 @@ async function adminView() {
       try { await navigator.clipboard.writeText(b.dataset.copy); toast("Copiado!"); }
       catch { prompt("Copie:", b.dataset.copy); }
     };
+  });
+  $app.querySelectorAll("[data-partner]").forEach((sel) => {
+    sel.onchange = () =>
+      run(() => api(`admin/participants/${encodeURIComponent(sel.dataset.partner)}/partner`,
+        { method: "PUT", body: { partnerId: sel.value || null }, admin: true }), "Casal salvo!");
   });
   const drawBtn = document.getElementById("draw");
   if (drawBtn) drawBtn.onclick = () =>

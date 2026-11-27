@@ -37,16 +37,26 @@ async function getEvent(env) {
 
 const saveEvent = (env, ev) => env.DB.put("event", JSON.stringify(ev));
 
-// Sorteio: embaralha e forma um ciclo único (ninguém tira a si mesmo).
+// Sorteio: permutação aleatória em que ninguém tira a si mesmo nem o próprio par (casal).
+// Usa amostragem por rejeição (distribuição uniforme entre os sorteios válidos).
+function randInt(n) {
+  return crypto.getRandomValues(new Uint32Array(1))[0] % n;
+}
+
 function draw(participants) {
   const ids = participants.map((p) => p.id);
-  for (let i = ids.length - 1; i > 0; i--) {
-    const r = crypto.getRandomValues(new Uint32Array(1))[0] % (i + 1);
-    [ids[i], ids[r]] = [ids[r], ids[i]];
+  const partner = Object.fromEntries(participants.map((p) => [p.id, p.partnerId || null]));
+  for (let attempt = 0; attempt < 20000; attempt++) {
+    const perm = ids.slice();
+    for (let i = perm.length - 1; i > 0; i--) {
+      const r = randInt(i + 1);
+      [perm[i], perm[r]] = [perm[r], perm[i]];
+    }
+    if (ids.every((id, i) => perm[i] !== id && perm[i] !== partner[id])) {
+      return Object.fromEntries(ids.map((id, i) => [id, perm[i]]));
+    }
   }
-  const assignments = {};
-  ids.forEach((id, i) => (assignments[id] = ids[(i + 1) % ids.length]));
-  return assignments;
+  return null;
 }
 
 async function readBody(request) {
@@ -72,6 +82,7 @@ async function handleAdmin(request, env, parts) {
         id: p.id,
         name: p.name,
         token: p.token,
+        partnerId: p.partnerId || null,
         seen: !!(await env.DB.get("seen:" + p.id)),
         hasSuggestions: !!((await env.DB.get("sug:" + p.id)) || "").trim(),
       }))
@@ -103,14 +114,33 @@ async function handleAdmin(request, env, parts) {
   if (resource === "participants" && method === "DELETE" && id) {
     if (ev.assignments) return err("O sorteio já foi feito. Desfaça o sorteio para alterar os participantes.");
     ev.participants = ev.participants.filter((p) => p.id !== id);
+    ev.participants.forEach((p) => p.partnerId === id && (p.partnerId = null));
     await Promise.all([env.DB.delete("sug:" + id), env.DB.delete("seen:" + id)]);
+    await saveEvent(env, ev);
+    return json({ ok: true });
+  }
+
+  if (resource === "participants" && method === "PUT" && id && parts[2] === "partner") {
+    if (ev.assignments) return err("O sorteio já foi feito. Desfaça o sorteio para alterar os casais.");
+    const { partnerId } = await readBody(request);
+    const me = ev.participants.find((p) => p.id === id);
+    const other = partnerId ? ev.participants.find((p) => p.id === partnerId) : null;
+    if (!me || (partnerId && (!other || other.id === me.id))) return err("Participante não encontrado.", 404);
+    // Desfaz pares antigos dos dois lados e cria o novo par (simétrico).
+    ev.participants.forEach((p) => {
+      if (p.partnerId === me.id || (other && p.partnerId === other.id)) p.partnerId = null;
+    });
+    me.partnerId = other ? other.id : null;
+    if (other) other.partnerId = me.id;
     await saveEvent(env, ev);
     return json({ ok: true });
   }
 
   if (resource === "draw" && method === "POST") {
     if (ev.participants.length < 3) return err("São necessários pelo menos 3 participantes.");
-    ev.assignments = draw(ev.participants);
+    const assignments = draw(ev.participants);
+    if (!assignments) return err("Não foi possível sortear com essas restrições de casais. Adicione mais participantes ou revise os casais.");
+    ev.assignments = assignments;
     ev.drawnAt = new Date().toISOString();
     await saveEvent(env, ev);
     return json({ ok: true });
