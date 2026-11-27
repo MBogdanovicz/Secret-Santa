@@ -125,8 +125,9 @@ async function participantView(token) {
   $app.innerHTML = `
     <div class="header"><div class="emoji">🎄</div><h1>${esc(data.title)}</h1>
       <p>Olá, <strong>${esc(data.me.name)}</strong>!</p>${countdownHtml(data.date)}</div>
-    <div id="askedBox"></div>
     <div id="matchBox"></div>
+    <div id="askedBox"></div>
+    <div id="matchExtra"></div>
     ${infoBlock(data)}
     <div class="card stack">
       <h2>🎁 O que eu gostaria de ganhar</h2>
@@ -137,7 +138,9 @@ async function participantView(token) {
     ${everyoneBlock(data.everyone || [], data)}`;
 
   const matchBox = document.getElementById("matchBox");
+  const matchExtra = document.getElementById("matchExtra");
   function renderMatch(show) {
+    matchExtra.innerHTML = "";
     if (!data.drawn || !data.match) {
       matchBox.innerHTML = `<div class="card center"><div style="font-size:3rem">⏳</div>
         <p><strong>O sorteio ainda não foi feito.</strong></p>
@@ -160,7 +163,8 @@ async function participantView(token) {
         <p class="muted" style="margin:0">Você tirou</p>
         <div class="match-name">${esc(data.match.name)}</div>
         <p class="muted" style="margin:0">Guarde segredo! 🤐</p>
-      </div>
+      </div>`;
+    matchExtra.innerHTML = `
       <div class="card stack">
         <h2>💡 O que ${esc(data.match.name)} gostaria de ganhar</h2>
         ${sug ? `<div class="suggestions">${esc(sug)}</div>`
