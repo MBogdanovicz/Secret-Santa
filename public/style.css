@@ -1,0 +1,60 @@
+:root {
+  --bg: #fdf6f0; --card: #ffffff; --text: #2b1d1d; --muted: #7a6a6a;
+  --red: #b91c1c; --red-dark: #8f1414; --green: #15803d; --border: #ead9cf;
+  --radius: 16px;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #1a1212; --card: #261b1b; --text: #f5ebe6; --muted: #b8a5a0; --border: #3d2c2c; --red: #ef4444; --red-dark: #dc2626; --green: #22c55e; }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--text);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; line-height: 1.5; }
+main { max-width: 640px; margin: 0 auto; padding: 24px 16px calc(48px + env(safe-area-inset-bottom)); }
+h1 { font-size: 1.6rem; margin: 0 0 4px; }
+h2 { font-size: 1.15rem; margin: 0 0 12px; }
+.muted { color: var(--muted); }
+.center { text-align: center; }
+.small { font-size: .875rem; }
+.card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 20px; margin: 16px 0; box-shadow: 0 1px 3px rgba(0,0,0,.04); }
+.header { text-align: center; margin: 8px 0 20px; }
+.header .emoji { font-size: 3rem; }
+button, .btn { font: inherit; font-weight: 600; border: 0; border-radius: 12px; padding: 12px 16px;
+  background: var(--red); color: #fff; cursor: pointer; text-decoration: none; display: inline-flex;
+  align-items: center; justify-content: center; gap: 6px; min-height: 44px; }
+button:hover, .btn:hover { background: var(--red-dark); }
+button:disabled { opacity: .5; cursor: not-allowed; }
+button.secondary { background: transparent; color: var(--text); border: 1px solid var(--border); }
+button.secondary:hover { background: var(--border); }
+button.danger { background: transparent; color: var(--red); border: 1px solid var(--red); }
+.btn.whatsapp { background: #25d366; color: #0b3d1f; }
+.btn.whatsapp:hover { background: #1fb457; }
+button.block, .btn.block { width: 100%; }
+input, textarea { font: inherit; width: 100%; padding: 12px; border-radius: 12px;
+  border: 1px solid var(--border); background: var(--bg); color: var(--text); }
+textarea { min-height: 120px; resize: vertical; }
+input:focus, textarea:focus { outline: 2px solid var(--red); outline-offset: 1px; }
+.row { display: flex; gap: 8px; }
+.row > input { flex: 1; }
+.stack > * + * { margin-top: 10px; }
+ul.list { list-style: none; padding: 0; margin: 0; }
+ul.list li { padding: 12px 0; border-top: 1px solid var(--border); }
+ul.list li:first-child { border-top: 0; }
+.person { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.person .name { font-weight: 600; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.actions > * { flex: 1 1 auto; padding: 8px 12px; min-height: 40px; font-size: .9rem; }
+.badge { font-size: .75rem; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); }
+.badge.ok { color: var(--green); border-color: var(--green); }
+.reveal { text-align: center; padding: 32px 20px; cursor: pointer; user-select: none; }
+.reveal .gift { font-size: 4.5rem; display: inline-block; transition: transform .3s; }
+.reveal:hover .gift { transform: rotate(-8deg) scale(1.05); }
+.reveal.shake .gift { animation: shake .6s; }
+@keyframes shake { 0%,100%{transform:rotate(0)} 20%{transform:rotate(-15deg)} 40%{transform:rotate(15deg)} 60%{transform:rotate(-10deg)} 80%{transform:rotate(10deg)} }
+.match-name { font-size: 2.2rem; font-weight: 800; color: var(--red); margin: 8px 0; animation: pop .5s ease-out; word-break: break-word; }
+@keyframes pop { from { transform: scale(.4); opacity: 0 } to { transform: scale(1); opacity: 1 } }
+.suggestions { white-space: pre-wrap; background: var(--bg); border-radius: 12px; padding: 12px; border: 1px dashed var(--border); }
+#toast { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom)); transform: translateX(-50%) translateY(20px);
+  background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 999px; opacity: 0; transition: .25s; pointer-events: none; max-width: calc(100% - 32px); }
+#toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+.error { color: var(--red); }

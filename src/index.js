@@ -1,0 +1,171 @@
+// Amigo Secreto: API (Cloudflare Worker + KV)
+// Chaves no KV:
+//   "event"      -> { title, participants: [{id, name, token}], assignments: {giverId: receiverId} | null, drawnAt }
+//   "sug:<id>"   -> texto das sugestões de presente do participante
+//   "seen:<id>"  -> data em que o participante abriu o link pela primeira vez
+
+const json = (data, status = 200) =>
+  new Response(JSON.stringify(data), {
+    status,
+    headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" },
+  });
+
+const err = (msg, status = 400) => json({ error: msg }, status);
+
+function randomToken(bytes = 16) {
+  const a = crypto.getRandomValues(new Uint8Array(bytes));
+  return btoa(String.fromCharCode(...a)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function safeEqual(a, b) {
+  if (typeof a !== "string" || typeof b !== "string" || a.length !== b.length) return false;
+  let r = 0;
+  for (let i = 0; i < a.length; i++) r |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return r === 0;
+}
+
+async function getEvent(env) {
+  return (
+    (await env.DB.get("event", "json")) || {
+      title: "Amigo Secreto da Família",
+      participants: [],
+      assignments: null,
+      drawnAt: null,
+    }
+  );
+}
+
+const saveEvent = (env, ev) => env.DB.put("event", JSON.stringify(ev));
+
+// Sorteio: embaralha e forma um ciclo único (ninguém tira a si mesmo).
+function draw(participants) {
+  const ids = participants.map((p) => p.id);
+  for (let i = ids.length - 1; i > 0; i--) {
+    const r = crypto.getRandomValues(new Uint32Array(1))[0] % (i + 1);
+    [ids[i], ids[r]] = [ids[r], ids[i]];
+  }
+  const assignments = {};
+  ids.forEach((id, i) => (assignments[id] = ids[(i + 1) % ids.length]));
+  return assignments;
+}
+
+async function readBody(request) {
+  try {
+    return await request.json();
+  } catch {
+    return {};
+  }
+}
+
+async function handleAdmin(request, env, parts) {
+  const auth = (request.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
+  if (!env.ADMIN_PASSWORD) return err("ADMIN_PASSWORD não configurada no servidor.", 500);
+  if (!safeEqual(auth, env.ADMIN_PASSWORD)) return err("Senha incorreta.", 401);
+
+  const ev = await getEvent(env);
+  const method = request.method;
+  const [resource, id] = parts;
+
+  if (resource === "state" && method === "GET") {
+    const participants = await Promise.all(
+      ev.participants.map(async (p) => ({
+        id: p.id,
+        name: p.name,
+        token: p.token,
+        seen: !!(await env.DB.get("seen:" + p.id)),
+        hasSuggestions: !!((await env.DB.get("sug:" + p.id)) || "").trim(),
+      }))
+    );
+    // As duplas sorteadas NÃO são enviadas ao admin (ele também participa).
+    return json({ title: ev.title, drawn: !!ev.assignments, drawnAt: ev.drawnAt, participants });
+  }
+
+  if (resource === "title" && method === "PUT") {
+    const { title } = await readBody(request);
+    if (!title || !String(title).trim()) return err("Informe um título.");
+    ev.title = String(title).trim().slice(0, 80);
+    await saveEvent(env, ev);
+    return json({ ok: true });
+  }
+
+  if (resource === "participants" && method === "POST") {
+    if (ev.assignments) return err("O sorteio já foi feito. Desfaça o sorteio para alterar os participantes.");
+    const { name } = await readBody(request);
+    const clean = String(name || "").trim().slice(0, 60);
+    if (!clean) return err("Informe um nome.");
+    if (ev.participants.some((p) => p.name.toLowerCase() === clean.toLowerCase()))
+      return err("Já existe um participante com esse nome.");
+    ev.participants.push({ id: randomToken(6), name: clean, token: randomToken(16) });
+    await saveEvent(env, ev);
+    return json({ ok: true });
+  }
+
+  if (resource === "participants" && method === "DELETE" && id) {
+    if (ev.assignments) return err("O sorteio já foi feito. Desfaça o sorteio para alterar os participantes.");
+    ev.participants = ev.participants.filter((p) => p.id !== id);
+    await Promise.all([env.DB.delete("sug:" + id), env.DB.delete("seen:" + id)]);
+    await saveEvent(env, ev);
+    return json({ ok: true });
+  }
+
+  if (resource === "draw" && method === "POST") {
+    if (ev.participants.length < 3) return err("São necessários pelo menos 3 participantes.");
+    ev.assignments = draw(ev.participants);
+    ev.drawnAt = new Date().toISOString();
+    await saveEvent(env, ev);
+    return json({ ok: true });
+  }
+
+  if (resource === "draw" && method === "DELETE") {
+    ev.assignments = null;
+    ev.drawnAt = null;
+    await saveEvent(env, ev);
+    return json({ ok: true });
+  }
+
+  return err("Rota não encontrada.", 404);
+}
+
+async function handleParticipant(request, env, token, sub) {
+  const ev = await getEvent(env);
+  const me = ev.participants.find((p) => safeEqual(p.token, token));
+  if (!me) return err("Link inválido.", 404);
+
+  if (sub === "suggestions" && request.method === "PUT") {
+    const { text } = await readBody(request);
+    await env.DB.put("sug:" + me.id, String(text || "").slice(0, 2000));
+    return json({ ok: true });
+  }
+
+  if (!sub && request.method === "GET") {
+    if (!(await env.DB.get("seen:" + me.id))) await env.DB.put("seen:" + me.id, new Date().toISOString());
+    let match = null;
+    if (ev.assignments && ev.assignments[me.id]) {
+      const m = ev.participants.find((p) => p.id === ev.assignments[me.id]);
+      if (m) match = { name: m.name, suggestions: (await env.DB.get("sug:" + m.id)) || "" };
+    }
+    return json({
+      title: ev.title,
+      me: { name: me.name, suggestions: (await env.DB.get("sug:" + me.id)) || "" },
+      drawn: !!ev.assignments,
+      match,
+    });
+  }
+
+  return err("Rota não encontrada.", 404);
+}
+
+export default {
+  async fetch(request, env) {
+    const url = new URL(request.url);
+    if (!url.pathname.startsWith("/api/")) return env.ASSETS.fetch(request);
+    const parts = url.pathname.slice(5).split("/").filter(Boolean).map(decodeURIComponent);
+    try {
+      if (parts[0] === "admin") return await handleAdmin(request, env, parts.slice(1));
+      if (parts[0] === "p" && parts[1]) return await handleParticipant(request, env, parts[1], parts[2]);
+      return err("Rota não encontrada.", 404);
+    } catch (e) {
+      return err("Erro interno: " + e.message, 500);
+    }
+  },
+};
